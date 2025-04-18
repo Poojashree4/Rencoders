@@ -1,0 +1,58 @@
+// Add Student Endpoint
+// app.post("/addstudent", async (req, res) => {
+//   try {
+//     const { error } = addStudentSchema.validate(req.body, { abortEarly: false });
+
+//     if (error) {
+//       return res.status(400).json({ error: error.details.map((err) => err.message) });
+//     }
+
+//      client = await connect();
+//     const studentCol = client.db("Rencoders").collection("studentdetails");
+//     const { studentname, learningMode, courses } = req.body;
+
+//     const existingStudent = await studentCol.findOne({ studentname });
+
+//     if (existingStudent) {
+//       return res.status(400).json({ error: "Student with this name already exists" });
+//     }
+
+//     const totalDuration = courses.reduce((sum, course) => sum + Number(course.duration), 0);
+//     const studentId = new Date().getTime() % 100;
+
+//     const result = await studentCol.insertOne({
+//       studentId,
+//       studentname,
+//       learningMode,
+//       totalDuration,
+//       courses: courses.map((course) => ({
+//         courseName: course.courseName,
+//         courseID: course.courseID,
+//         duration: Number(course.duration),
+//       })),
+//     });
+
+//     if (result.insertedId) {
+//       return res.status(201).json({
+//         message: "Student added successfully",
+//         student: {
+//           studentId,
+//           studentname,
+//           learningMode,
+//           totalDuration,
+//           courses,
+//         },
+//       });
+//     } else {
+//       return res.status(500).json({ error: "Failed to add student" });
+//     }
+//   } catch (error) {
+//     console.error("Error while adding student:", error);
+//     res.status(500).json({ error: "Internal Server Error" });
+//   }
+//   finally{
+//     if(client){
+//       await client.close();
+//     }
+//   }
+// });

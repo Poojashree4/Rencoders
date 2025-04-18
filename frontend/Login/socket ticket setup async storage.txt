@@ -1,0 +1,524 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const TicketsScreen = () => {
+  const [tickets, setTickets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [userRole, setUserRole] = useState(null);
+  const navigation = useNavigation();
+
+  useEffect(() => {
+    const fetchTickets = async () => {
+      try {
+        const token = await AsyncStorage.getItem('token');
+        const role = await AsyncStorage.getItem('userRole');
+        setUserRole(role);
+
+        const response = await fetch('http://your-api-url/getAllTickets', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+          setTickets(data);
+        } else {
+          console.error('Failed to fetch tickets:', data.error);
+        }
+      } catch (error) {
+        console.error('Error:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTickets();
+  }, []);
+
+  const renderTicketItem = ({ item }) => (
+    <TouchableOpacity 
+      style={styles.ticketItem}
+      onPress={() => navigation.navigate('TicketChat', { ticketId: item._id })}
+    >
+      <Text style={styles.ticketTitle}>{item.title}</Text>
+      <Text style={styles.ticketStatus}>Status: {item.status}</Text>
+      <Text style={styles.ticketMeta}>
+        Created by: {item.createdBy.role} ({item.createdBy.roleID})
+      </Text>
+      <Text style={styles.ticketMeta}>
+        Assigned to: {item.assignedTo.role} ({item.assignedTo.roleID})
+      </Text>
+    </TouchableOpacity>
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <FlatList
+        data={tickets}
+        renderItem={renderTicketItem}
+        keyExtractor={(item) => item._id}
+        contentContainerStyle={styles.listContainer}
+      />
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  listContainer: {
+    padding: 10,
+  },
+  ticketItem: {
+    backgroundColor: 'white',
+    padding: 15,
+    marginBottom: 10,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  ticketTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 5,
+  },
+  ticketStatus: {
+    color: '#666',
+    marginBottom: 5,
+  },
+  ticketMeta: {
+    fontSize: 14,
+    color: '#666',
+  },
+});
+
+export default TicketsScreen;
+// screen1
+
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import io from 'socket.io-client';
+
+const TicketChatScreen = ({ route }) => {
+  const { ticketId } = route.params;
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [socket, setSocket] = useState(null);
+  const flatListRef = useRef();
+
+  useEffect(() => {
+    const setupSocket = async () => {
+      const token = await AsyncStorage.getItem('token');
+      const userId = await AsyncStorage.getItem('userId');
+      const userRole = await AsyncStorage.getItem('userRole');
+      
+      setUser({
+        id: userId,
+        role: userRole
+      });
+
+      const newSocket = io('http://your-api-url', {
+        query: { token },
+        transports: ['websocket']
+      });
+
+      newSocket.on('connect', () => {
+        console.log('Connected to socket');
+        newSocket.emit('joinTicket', ticketId);
+      });
+
+      newSocket.on('newMessage', (message) => {
+        setMessages(prev => [...prev, message]);
+        scrollToBottom();
+      });
+
+      setSocket(newSocket);
+
+      return () => {
+        newSocket.disconnect();
+      };
+    };
+
+    const fetchMessages = async () => {
+      try {
+        const token = await AsyncStorage.getItem('token');
+        const response = await fetch(`http://your-api-url/getChats`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ ticketId })
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+          setMessages(data.chats || []);
+        } else {
+          console.error('Failed to fetch chats:', data.error);
+        }
+      } catch (error) {
+        console.error('Error:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    setupSocket();
+    fetchMessages();
+  }, [ticketId]);
+
+  const scrollToBottom = () => {
+    if (flatListRef.current && messages.length > 0) {
+      flatListRef.current.scrollToEnd({ animated: true });
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !user || !socket) return;
+
+    const messageData = {
+      ticketId,
+      message: newMessage,
+      senderId: user.id,
+      senderRole: user.role,
+      timestamp: new Date().toISOString()
+    };
+
+    try {
+      // Send via socket for real-time
+      socket.emit('sendMessage', messageData);
+      
+      // Also send to API for persistence
+      const token = await AsyncStorage.getItem('token');
+      await fetch(`http://your-api-url/addChat/${ticketId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(messageData)
+      });
+
+      setNewMessage('');
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
+  };
+
+  const renderMessage = ({ item }) => (
+    <View style={[
+      styles.messageContainer,
+      item.senderRole === user?.role ? styles.myMessage : styles.otherMessage
+    ]}>
+      <Text style={styles.messageSender}>
+        {item.senderRole === 'admin' ? 'Admin' : 'Support'} ({item.senderId})
+      </Text>
+      <Text style={styles.messageText}>{item.message}</Text>
+      <Text style={styles.messageTime}>
+        {new Date(item.timestamp).toLocaleTimeString()}
+      </Text>
+    </View>
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={90}
+    >
+      <FlatList
+        ref={flatListRef}
+        data={messages}
+        renderItem={renderMessage}
+        keyExtractor={(item, index) => index.toString()}
+        contentContainerStyle={styles.messagesList}
+        onContentSizeChange={scrollToBottom}
+        onLayout={scrollToBottom}
+      />
+
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.input}
+          value={newMessage}
+          onChangeText={setNewMessage}
+          placeholder="Type your message..."
+          multiline
+        />
+        <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
+          <Text style={styles.sendButtonText}>Send</Text>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  messagesList: {
+    padding: 10,
+  },
+  messageContainer: {
+    maxWidth: '80%',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  myMessage: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#DCF8C6',
+    marginLeft: '20%',
+  },
+  otherMessage: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#ECECEC',
+    marginRight: '20%',
+  },
+  messageSender: {
+    fontWeight: 'bold',
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  messageText: {
+    fontSize: 16,
+  },
+  messageTime: {
+    fontSize: 10,
+    color: '#666',
+    marginTop: 4,
+    alignSelf: 'flex-end',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    padding: 10,
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#ddd',
+  },
+  input: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    marginRight: 10,
+    maxHeight: 100,
+  },
+  sendButton: {
+    backgroundColor: '#007AFF',
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    justifyContent: 'center',
+  },
+  sendButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+});
+
+export default TicketChatScreen;
+//screen 2 chat
+
+// In your server setup (app.js or index.js)
+const http = require('http');
+const socketIo = require('socket.io');
+
+const server = http.createServer(app);
+const io = socketIo(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
+// Socket.io connection handling
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.query.token;
+    if (!token) return next(new Error('Authentication error'));
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    socket.user = decoded;
+    next();
+  } catch (err) {
+    next(new Error('Authentication error'));
+  }
+});
+
+io.on('connection', (socket) => {
+  console.log('New client connected:', socket.user.userId);
+
+  socket.on('joinTicket', (ticketId) => {
+    socket.join(ticketId);
+    console.log(`User ${socket.user.userId} joined ticket ${ticketId}`);
+  });
+
+  socket.on('sendMessage', async (messageData) => {
+    try {
+      // Broadcast to all in the ticket room
+      io.to(messageData.ticketId).emit('newMessage', messageData);
+    } catch (err) {
+      console.error('Socket message error:', err);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Client disconnected');
+  });
+});
+
+// Start server with socket.io
+server.listen(port, () => {
+  console.log(`Server running on port ${port}`);
+});
+
+// socket  Add Socket.io Integration
+
+// authMiddleware.js
+const jwt = require('jsonwebtoken');
+
+const authenticate = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ error: 'No token provided' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(403).json({ error: 'Invalid token' });
+  }
+};
+
+const authorizeRoles = (...roles) => {
+  return (req, res, next) => {
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    next();
+  };
+};
+
+module.exports = { authenticate, authorizeRoles };
+//middle ware
+
+// Apply authentication to your routes
+const { authenticate, authorizeRoles } = require('./authMiddleware');
+
+// For support users
+app.post('/createTicket', authenticate, authorizeRoles('support'), async (req, res) => {
+  // ... existing create ticket logic
+});
+
+// For admin users
+app.post('/addChat/:ticketId', authenticate, authorizeRoles('admin'), async (req, res) => {
+  // ... existing add chat logic
+});
+
+// For both roles
+app.get('/getAllTickets', authenticate, async (req, res) => {
+  // ... existing get all tickets logic
+});
+
+app.post('/getChats', authenticate, async (req, res) => {
+  // ... existing get chats logic
+});
+//token setup for backend
+
+
+//socket setup
+
+Setup Instructions
+Install required dependencies:
+
+Copy
+npm install socket.io-client @react-native-async-storage/async-storage
+Set up navigation:
+
+javascript
+Copy
+// In your navigation setup
+import { createStackNavigator } from '@react-navigation/stack';
+import TicketsScreen from './TicketsScreen';
+import TicketChatScreen from './TicketChatScreen';
+
+const Stack = createStackNavigator();
+
+function TicketStack() {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen name="Tickets" component={TicketsScreen} />
+      <Stack.Screen name="TicketChat" component={TicketChatScreen} />
+    </Stack.Navigator>
+  );
+}
+Implement token storage after login:
+
+javascript
+Copy
+// After successful login
+await AsyncStorage.setItem('token', response.data.token);
+await AsyncStorage.setItem('userId', response.data.user.id);
+await AsyncStorage.setItem('userRole', response.data.user.role);
+This implementation provides:
+
+Real-time chat between admin and support
+
+Proper authentication and authorization
+
+Persistent chat history
+
+Clean UI with message bubbles
+
+Automatic scrolling to new messages
+
+Proper error handling
+
+Role-based access control
+
+The system will now properly show chat details when a ticket is clicked and store all conversations in the database.

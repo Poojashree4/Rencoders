@@ -1,0 +1,119 @@
+//   return (
+//     <><ScrollView>
+//       <SafeAreaView style={styles.container}>
+//         <View style={styles.header}>
+
+        
+//         <Text style={styles.headerTitle}>Student Details</Text>
+//         </View>
+//         <View style={styles.card}>
+//           <Text style={styles.cardTitle}>{editingStudentId ? 'Edit Student' : 'Add New Student'}</Text>
+//           <TextInput style={styles.input} placeholder="Student Name" value={studentName} onChangeText={setStudentName} />
+//           <TextInput style={styles.input} placeholder="Learning Mode" value={learningMode} onChangeText={setLearningMode} />
+
+//           {/* Add Course Input */}
+//           <TextInput style={styles.input} placeholder="Course Name" value={courseName} onChangeText={setCourseName} />
+//           <TextInput style={styles.input} placeholder="Course ID" value={courseID} onChangeText={setCourseID} />
+//           <TextInput style={styles.input} placeholder="Course Duration (hrs)" keyboardType="numeric" value={courseDuration} onChangeText={setCourseDuration} />
+//           <Pressable style={styles.button} onPress={addCourse}><Text style={styles.buttonText}>Add Course</Text></Pressable>
+
+//           {/* Display the added courses */}
+//           {courses.length > 0 && (
+//             <View style={styles.courseList}>
+//               <Text style={styles.subtitle}>Added Courses:</Text>
+//               {courses.map((course, index) => (
+//                 <Text key={index} style={styles.courseItem}>
+//                   {course.courseName} (ID: {course.courseID}) - {course.duration} hrs
+//                 </Text>
+//               ))}
+//             </View>
+//           )}
+
+//           <Pressable style={styles.button} onPress={addOrUpdateStudent}>
+//             <Text style={styles.buttonText}>{editingStudentId ? 'Update Student' : 'Add Student'}</Text>
+//           </Pressable>
+//         </View>
+
+//         <View>
+//   <Text style={styles.subtitle}>Student List</Text>
+//   {students.map((student) => (
+//     <TouchableOpacity
+//       key={student.studentId}
+//       style={styles.studentCard}
+//       onPress={() => navigation.navigate('studentlist', { student })}
+//     >
+//       <Text style={styles.studentName}>{student.studentname}</Text>
+//       <Text style={styles.studentDetail}>Student ID: {student.studentId}</Text>
+//       <Pressable onPress={() => startEditing(student)} style={styles.editbutn}>
+//           <FontAwesome6 name="edit" size={24} color="blue" />
+//         </Pressable>
+
+//     </TouchableOpacity>
+//   ))}
+// </View>
+
+//       </SafeAreaView>
+//     </ScrollView><View style={styles.navbarContainer}>
+//         <Navbar />
+//       </View></>
+//   );
+// }
+
+// const styles = StyleSheet.create({
+//   container: { padding: 20, backgroundColor: 'white' },
+//   title: { fontSize: 24, fontWeight: 'bold' },
+//   card: { padding: 20, backgroundColor:  'rgba(219, 227, 243, 0.93)', borderRadius: 10, marginVertical: 10, },
+//   cardTitle: { fontSize: 20, marginBottom: 10 },
+//   input: { borderColor: '#ddd', borderWidth: 1, padding: 10, marginVertical: 5 },
+//   button: { backgroundColor: '#007BFF', padding: 10, borderRadius: 5, marginVertical: 5 },
+//   buttonText: { color: '#fff', textAlign: 'center' },
+//   courseList: { marginTop: 10 },
+//   subtitle: { fontSize: 18, marginTop: 20, fontWeight: 'bold' },
+//   courseItem: { fontSize: 16, marginTop: 5 },
+//   studentCard: { padding: 20, backgroundColor: '#fff', marginVertical: 10, borderRadius: 10, elevation:5, },
+//   studentName: { fontSize: 18, fontWeight: 'bold' },
+//   studentDetail: { fontSize: 16, marginTop: 5 },
+//   studentCard: {
+//     padding: 20,
+//     backgroundColor: 'rgba(241, 234, 215, 0.93)',
+//     marginVertical: 10,
+//     borderRadius: 10,
+//     elevation: 5,
+//     position:'relative',
+//   },
+//   studentInfo: {
+//     flexDirection: 'row',
+//     justifyContent: 'space-between', // Pushes the icon to the right
+//     alignItems: 'center',
+//   },
+//   studentName: {
+//     fontSize: 18,
+//     fontWeight: 'bold',
+//   },
+//   studentDetail: {
+//     fontSize: 16,
+//     marginTop: 5,
+//   },
+//   editbutn:{
+//     position: 'absolute',
+//     top: 30,
+//     right: 25,
+//   },
+//   header: {
+//     padding: 16,
+//     backgroundColor: '#3F51B5',
+//     alignItems: 'center',
+//     position:'cover'
+//   },
+//   headerTitle: {
+//     fontSize: 24,
+//     fontWeight: 'bold',
+//     color: 'white',
+//     marginBottom: 4,
+//   },
+//   headerSubtitle: {
+//     fontSize: 16,
+//     color: 'white',
+//     marginBottom: 12,
+//   },
+// });

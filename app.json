@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "RencoderAdmin",
+    "slug": "RencoderAdmin",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "https://renambl.blr1.cdn.digitaloceanspaces.com/rcoders/web/Rencoders_logo.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "https://renambl.blr1.cdn.digitaloceanspaces.com/rcoders/web/Rencoders_logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#d8bfd8"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff",
+          "sounds": ["./assets/notification-sound.wav"]
+        }
+      ]
+    ]
+  }
+}

@@ -1,0 +1,199 @@
+// import { StatusBar } from 'expo-status-bar';
+// import { Pressable, StyleSheet, Text, TextInput, View,Image,Alert,ToastAndroid } from 'react-native';
+// import { useState } from 'react';
+// import styles from './Loginstyle.js';
+// import { useNavigation } from '@react-navigation/native';
+// import {Dimensions} from 'react-native';
+
+
+
+// export default function Login() {
+
+//   const [data, setData] = useState("");
+//   const [email, setEmail] = useState("");
+
+//   const navigation = useNavigation(); 
+
+//   const windowWidth = Dimensions.get('window').width;
+// const windowHeight = Dimensions.get('window').height;
+
+//   const validateEmail = (email) => {
+//     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+//     return emailRegex.test(email);
+//   };
+
+//   const validatePassword = (password) => {
+//     return password.length >= 8;
+//   };
+
+
+//   const onSubmit = () => {
+//     if (!validateEmail(email)) {
+//       ToastAndroid.show("Invalid Email", "Please enter a valid email address.");
+//       return;
+//     }
+//     if (!validatePassword(data)) {
+//       ToastAndroid.show("Invalid Password", "Password must be at least 8 characters long.");
+//       return;
+//     }
+
+//     navigation.navigate('adminhome'); 
+
+//   // const onSubmit = () => {
+//   //  // alert(`Submitted: ${data}\nEmail: ${email}`); 
+//   //   setData(""); 
+//   //   setEmail("");
+//   };
+
+//   return (
+//     <View style={styles.container}>
+//               <Image source={{uri:"https://renambl.blr1.cdn.digitaloceanspaces.com/rcoders/web/Rencoders_logo.png"}} style={styles.logo} />
+
+//        <View style={styles.box}>
+//         <Text style={{color: "black", fontSize: 30, marginTop: 20}}>Login</Text>
+     
+//       <Text style={{fontSize: 20,marginTop: 20, marginLeft:6}}>Email Id  : <TextInput
+//           style={styles.inpt}
+//           placeholder='Email'
+//           onChangeText={(text) => setEmail(text)}
+//           value={email}
+//         /> </Text>
+
+// <Text style={{fontSize: 20, marginTop: 30}}>Password: <TextInput
+//           style={styles.input}
+//           placeholder='Password'
+//           onChangeText={(text) => setData(text)}
+//           value={data}
+//           secureTextEntry={true}
+//         /></Text>
+//         <Text style={{ marginTop: 20, color: '#0077FF' }}>forget password?</Text>
+        
+//         <Pressable
+//   title="Submit"
+//   style={styles.button}
+//   onPress={() => (data && email) ? onSubmit() : ToastAndroid.show("Please enter Email and Password")}>
+//   <Text style={styles.buttonText}>LOGIN</Text>
+// </Pressable>
+
+// <Text style={{ marginTop: 20 }}>
+//   Create new account? <Text style={{ color: '#0077FF' }}>SIGNIN</Text>
+// </Text>
+
+//  <StatusBar style="auto" />
+//       </View>
+      
+//     </View>
+//   );
+// }
+
+import { StatusBar } from 'expo-status-bar';
+import { Pressable, StyleSheet, Text, TextInput, View, Image, ToastAndroid, SafeAreaView } from 'react-native';
+import { useState } from 'react';
+import { useNavigation } from '@react-navigation/native';
+import { Dimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
+import styles from './Loginstyle.js';
+
+export default function Login() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState(""); // Added password state
+
+  const navigation = useNavigation();
+
+  const windowWidth = Dimensions.get('window').width;
+  const windowHeight = Dimensions.get('window').height;
+
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validatePassword = (password) => {
+    return password.length >= 8;
+  };
+
+  const onSubmit = async () => {
+    if (!validateEmail(email)) {
+      ToastAndroid.show("Please enter a valid email address.", ToastAndroid.SHORT);
+      return;
+    }
+    if (!validatePassword(password)) {
+      ToastAndroid.show("Password must be at least 8 characters long.", ToastAndroid.SHORT);
+      return;
+    }
+
+    try {
+      const response = await fetch("http://192.168.1.2:5000/login", {  // Use your machine's local IP address
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }), // Send email and password
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        ToastAndroid.show("Login successful!", ToastAndroid.SHORT);
+        navigation.navigate('adminhome'); // Redirect to home page
+      } else {
+        ToastAndroid.show(data.error || "Invalid credentials", ToastAndroid.SHORT);
+      }
+    } catch (error) {
+      ToastAndroid.show("Login Failed. Try again later.", ToastAndroid.SHORT);
+    }
+  };
+
+  return (
+    <SafeAreaView style={[styles.container, { height: windowHeight, width: windowWidth }]}>
+      <View style={[styles.container, { height: windowHeight, width: windowWidth }]}>
+        <Image
+          source={{ uri: "https://renambl.blr1.cdn.digitaloceanspaces.com/rcoders/web/Rencoders_logo.png" }}
+          style={[styles.logo, { width: windowWidth * 0.6, height: windowHeight * 0.2 }]}
+        />
+
+        <View style={[styles.box, { width: windowWidth * 0.85 }]}>
+          <Text style={{ color: "black", fontSize: windowWidth * 0.06, marginTop: 20 }}>Account Login</Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 20, marginLeft: 6 }}>
+            <Ionicons name="mail" size={24} color="black" />
+            <TextInput
+              style={[styles.inpt, { flex: 1, marginLeft: 10, backgroundColor: 'transparent' }]}
+              placeholder='Email'
+              onChangeText={(text) => setEmail(text)}
+              value={email}
+              autoCompleteType="off"
+              importantForAutofill="no"
+            />
+          </View>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 30 }}>
+            <FontAwesome5 name="user-lock" size={24} color="black" />
+            <TextInput
+              style={[styles.input, { flex: 1, backgroundColor: 'transparent' }]}
+              placeholder='Password'
+              secureTextEntry={true}
+              onChangeText={(text) => setPassword(text)}  // Set password state
+              value={password}
+              autoCompleteType="off"
+              importantForAutofill="no"
+            />
+          </View>
+
+          <Pressable
+            title="Submit"
+            style={styles.button}
+            onPress={() => (password && email) ? onSubmit() : ToastAndroid.show("Please enter Email and Password", ToastAndroid.SHORT)}
+          >
+            <Text style={styles.buttonText}>LOG IN</Text>
+          </Pressable>
+
+          <Text style={{ marginTop: 20, fontSize: windowWidth * 0.04, color: 'grey' }}>
+            Create new account? <Text style={{ color: '#0077FF' }}>SIGNIN</Text>
+          </Text>
+
+          <StatusBar style="auto" />
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}

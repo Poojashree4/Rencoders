@@ -1,0 +1,1199 @@
+
+
+const express = require("express");
+const { MongoClient } = require("mongodb");
+const cors = require("cors");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const validator = require("validator");
+const Joi = require("joi");
+require('dotenv').config();
+// const nodemailer = require('nodemailer') ;
+// const otpGenerator= require('otp-generator');
+
+
+
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const uri = "mongodb://localhost:27017/Rencoders";
+let client;
+
+
+
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; 
+
+  if (!token) {
+    return res.status(401).json({ error: "No token provided" });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: "Invalid token" });
+    }
+    req.user = user; 
+    next(); 
+  });
+};
+
+app.get('/protected', authenticateToken, (req, res) => {
+  res.status(200).json({ message: "Access granted to protected route" });
+});
+
+
+
+
+async function connect() {
+  const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+  await client.connect();
+  return client;
+}
+const createToken = (userId) => {
+  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
+};
+
+
+
+// const createToken = (id) => {
+//   return jwt.sign({ id }, JWT_SECRET, { expiresIn: "7d" }); 
+// };
+
+// const loginSchema = Joi.object({
+//   email: Joi.string().email().required(),
+//   password: Joi.string().min(6).required(),
+// });
+
+
+
+// app.post('/login', async (req, res) => {
+//   try {
+//     const { error,value } = loginSchema.validate(req.body, { abortEarly: false });
+
+//     if (error) {
+//       return res.status(400).json({ error: error.details.map((err) => err.message) });
+//     }
+
+
+//      client = await connect();
+//     const userCol = client.db("Rencoders").collection("users");
+//     const { email, password } = value;
+
+   
+
+//     const user = await userCol.findOne({ email });
+//     if (!user) {
+//       return res.status(401).json({ error: "User not found" });
+//     }
+
+//     const isPasswordValid = await bcrypt.compare(password, user.password);
+//     if (!isPasswordValid) {
+//       return res.status(401).json({ error: "Invalid password" });
+//     }
+
+//     const token = createToken(user._id);
+
+//     res.status(200).json({
+//       message: "Login successful",
+//       token,
+//       user: { name: user.name, email: user.email }  
+//     });
+
+//   } catch (error) {
+//     console.error("Login error:", error);
+//     res.status(500).json({ error: "Server Error" });
+//   }
+//   finally{
+//     await client.close();
+//   }
+// });
+
+const loginSchema = Joi.object({
+  email: Joi.string().email().required(),
+  password: Joi.string().min(4).required(),
+  role: Joi.string().valid('Admin', 'Support').required()
+});
+
+app.post('/login', async (req, res) => {
+  let client;
+  try {
+    const { error, value } = loginSchema.validate(req.body, { abortEarly: false });
+
+    if (error) {
+      return res.status(400).json({ error: error.details.map((err) => err.message) });
+    }
+
+    client = await connect();
+    const userCol = client.db("Rencoders").collection("users");
+    const { email, password, role } = value;
+
+    const user = await userCol.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ error: "User not found" });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: "Invalid password" });
+    }
+
+    // ✅ Check if role matches
+    if (user.role !== role) {
+      return res.status(403).json({ error: "Incorrect role selected" });
+    }
+    console.log("Login request received:", req.body);
+    console.log("User found in DB:", user);
+    console.log("Comparing password...");
+    console.log("Expected role:", role, " | User role:", user.role);
+    
+    const token = createToken(user._id);
+
+    res.status(200).json({
+      message: "Login successful",
+      token,
+      user: {
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+      
+    });
+
+  } catch (error) {
+    console.error("Login error:", error.message);
+    res.status(500).json({ error: "Server Error", details: error.message });
+  
+  
+  } finally {
+    if (client) {
+      await client.close();
+    }
+  }
+});
+
+
+app.post('/register', async (req, res) => {
+  try {
+    const client = await connect();
+    const userCol = client.db("Rencoders").collection("users");
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    if (!validator.isEmail(email)) {
+      return res.status(400).json({ error: "Invalid email format" });
+    }
+
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    const newUser = {
+      email: email,
+      password: hashedPassword,
+      isActive: false
+    };
+    await userCol.insertOne(newUser);
+
+    const token = createToken(newUser._id);
+
+    res.status(201).json({
+      message: "User registered successfully",
+      token 
+    });
+
+  } catch (error) {
+    console.error("Registration error:", error);
+    res.status(500).json({ error: "Server Error" });
+  }
+  finally{
+    await client.close();
+  }
+});
+
+
+
+const profileSchema = Joi.object({
+  email: Joi.string().email().required().messages({
+    "string.email": "Invalid email format",
+    
+  })
+});
+
+const profileUpdateSchema = Joi.object({
+  email: Joi.string().email().required().messages({
+    "string.email": "Invalid email format",
+    
+  }),
+  name: Joi.string().min(2).max(50).messages({
+    "string.min": "Name must be at least 2 characters long",
+    "string.max": "Name cannot exceed 50 characters"
+  }),
+  phoneNumber: Joi.string()
+    .pattern(/^\d{10}$/)
+    .messages({
+      "string.pattern.base": "Phone number must be a valid 10-digit number"
+    }),
+  experience: Joi.number().min(0).max(50).messages({
+    "number.min": "Experience cannot be negative",
+    "number.max": "Experience cannot exceed 50 years"
+  }),
+  location: Joi.string().min(2).max(100).messages({
+    "string.min": "Location must be at least 2 characters long",
+    "string.max": "Location cannot exceed 100 characters"
+  })
+}).or("name", "phoneNumber", "experience", "location").messages({
+  "object.missing": "At least one field (name, phoneNumber, experience, location) must be provided to update"
+});
+
+// Profile Endpoint
+app.post('/profile', async (req, res) => {
+  try {
+    const { error,value } = profileSchema.validate(req.body, { abortEarly: false });
+
+    if (error) {
+      return res.status(400).json({ error: error.details.map((err) => err.message) });
+    }
+
+     client = await connect();
+    const userCol = client.db("Rencoders").collection("users");
+    const { email } = value;
+
+    const user = await userCol.findOne({ email }, { projection: { password: 0 } }); 
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.status(200).json({
+      name: user.name,
+      email: user.email,
+      phoneNumber: user.phoneNumber,  
+      experience: user.experience,   
+      location: user.location        
+    });
+
+  } catch (error) {
+    console.error("Profile error:", error);
+    res.status(500).json({ error: "Server Error" });
+  }
+  finally{
+  
+      await client.close();
+    
+  }
+});
+
+// Profile Update Endpoint
+app.post('/profileupdate', async (req, res) => { 
+  try {
+    const { error,value } = profileUpdateSchema.validate(req.body, { abortEarly: false });
+
+    if (error) {
+      return res.status(400).json({ error: error.details.map((err) => err.message) });
+    }
+
+     client = await connect();
+    const userCol = client.db("Rencoders").collection("users");
+    const email = req.user.email;
+    const { name, phoneNumber, experience, location } = value;
+
+    const updates = {};
+    if (name) updates.name = name;
+    if (phoneNumber) updates.phoneNumber = phoneNumber;
+    if (experience) updates.experience = experience;
+    if (location) updates.location = location;
+
+    const result = await userCol.updateOne({ email }, { $set: updates });
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.status(200).json({ message: "Profile updated successfully" });
+
+  } catch (error) {
+    console.error("Profile update error:", error);
+    res.status(500).json({ error: "Server Error" });
+  }
+  finally{
+   
+      await client.close();
+    
+  }
+});
+
+const addStudentSchema = Joi.object({
+  studentname: Joi.string().min(2).max(50).required().messages({
+    "string.min": "Student name must be at least 2 characters long",
+    "string.max": "Student name cannot exceed 50 characters",
+    
+  }),
+  learningMode: Joi.string().valid("online", "offline").required().messages({
+    "any.only": "Learning mode must be either 'online' or 'offline'",
+ 
+  }),
+  courses: Joi.array()
+    .items(
+      Joi.object({
+        courseName: Joi.string().min(2).max(100).required().messages({
+          "string.min": "Course name must be at least 2 characters long",
+          "string.max": "Course name cannot exceed 100 characters",
+         
+        }),
+        courseID: Joi.string().required().messages({
+          "any.required": "Course ID is required",
+        }),
+        duration: Joi.number().min(1).required().messages({
+          "number.min": "Duration must be at least 1",
+        
+        }),
+      })
+    )
+    .min(1)
+    .required()
+    .messages({
+      "array.min": "At least one course is required",
+   
+    }),
+});
+// Display Student Schema
+const displayStudentSchema = Joi.object({
+  learningMode: Joi.string().valid("online", "offline").messages({
+    "any.only": "Learning mode must be either 'online' or 'offline'"
+  })
+});
+
+
+const updateStudentSchema = Joi.object({
+  studentId: Joi.number().required().messages({
+    
+    "number.base": "Student ID must be a number"
+  }),
+  studentname: Joi.string().min(3).max(50).required().messages({
+    "string.min": "Student name must be at least 3 characters long",
+    "string.max": "Student name cannot exceed 50 characters",
+    
+  }),
+  learningMode: Joi.string().valid("online", "offline").required().messages({
+    "any.only": "Learning mode must be either 'online' or 'offline'",
+
+  }),
+  totalDuration: Joi.number().min(1).required().messages({
+    "number.min": "Total duration must be at least 1",
+    
+    "number.base": "Total duration must be a number"
+  }),
+  courses: Joi.array()
+    .items(
+      Joi.object({
+        courseName: Joi.string().min(3).max(100).required().messages({
+          "string.min": "Course name must be at least 3 characters long",
+          "string.max": "Course name cannot exceed 100 characters",
+         
+        }),
+        courseID: Joi.string().required().messages({
+          "any.required": "Course ID is required"
+        }),
+        duration: Joi.number().min(1).required().messages({
+          "number.min": "Duration must be at least 1",
+         
+          "number.base": "Duration must be a number"
+        }),
+      })
+    )
+    .min(1)
+    .required()
+    .messages({
+      "array.min": "At least one course is required",
+      
+    }),
+});
+
+// Add Student Endpoint
+app.post("/addstudent", async (req, res) => {
+  try {
+    const { error } = addStudentSchema.validate(req.body, { abortEarly: false });
+
+    if (error) {
+      return res.status(400).json({ error: error.details.map((err) => err.message) });
+    }
+
+     client = await connect();
+    const studentCol = client.db("Rencoders").collection("studentdetails");
+    const { studentname, learningMode, courses } = req.body;
+
+    const existingStudent = await studentCol.findOne({ studentname });
+
+    if (existingStudent) {
+      return res.status(400).json({ error: "Student with this name already exists" });
+    }
+
+    const totalDuration = courses.reduce((sum, course) => sum + Number(course.duration), 0);
+    const studentId = new Date().getTime() % 100;
+
+    const result = await studentCol.insertOne({
+      studentId,
+      studentname,
+      learningMode,
+      totalDuration,
+      courses: courses.map((course) => ({
+        courseName: course.courseName,
+        courseID: course.courseID,
+        duration: Number(course.duration),
+      })),
+    });
+
+    if (result.insertedId) {
+      return res.status(201).json({
+        message: "Student added successfully",
+        student: {
+          studentId,
+          studentname,
+          learningMode,
+          totalDuration,
+          courses,
+        },
+      });
+    } else {
+      return res.status(500).json({ error: "Failed to add student" });
+    }
+  } catch (error) {
+    console.error("Error while adding student:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+  finally{
+    if(client){
+      await client.close();
+    }
+  }
+});
+
+// Display Student Endpoint
+app.post("/displaystudent", async (req, res) => {
+  try {
+    const { error } = displayStudentSchema.validate(req.body);
+
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
+
+     client = await connect();
+    const studentCol = client.db("Rencoders").collection("studentdetails");
+
+    let query = {};
+    if (req.body.learningMode) {
+      query.learningMode = req.body.learningMode;
+    }
+
+    const students = await studentCol.find(query).toArray();
+
+    if (students.length === 0) {
+      return res.status(404).json({ message: "No students found" });
+    }
+
+    res.status(200).json(students);
+  } catch (error) {
+    console.log("Error fetching students:", error);
+    res.status(500).json({ error: "Server Error" });
+  }
+  finally{
+    
+      await client.close();
+    
+  }
+});
+
+// Update Student Endpoint
+app.post("/updatestudent", async (req, res) => {
+  try {
+    const { error } = updateStudentSchema.validate(req.body, { abortEarly: false });
+
+    if (error) {
+      return res.status(400).json({ error: error.details.map((err) => err.message) });
+    }
+
+    client = await connect();
+    const studentCol = client.db("Rencoders").collection("studentdetails");
+    const { studentId, studentname, courses, learningMode, totalDuration } = req.body;
+
+    const existingStudent = await studentCol.findOne({ studentId });
+    if (!existingStudent) {
+      return res.status(404).json({ error: "Student not found" });
+    }
+
+    const updatedStudent = {
+      studentname,
+      learningMode,
+      totalDuration,
+      courses,
+    };
+
+    const result = await studentCol.updateOne({ studentId }, { $set: updatedStudent });
+
+    if (result.modifiedCount > 0) {
+      return res.status(200).json({
+        message: "Student updated successfully",
+        student: updatedStudent,
+      });
+    } else {
+      return res.status(500).json({ error: "Failed to update student" });
+    }
+  } catch (error) {
+    console.error("Error while updating student:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+  finally{
+
+      await client.close();
+    
+  }
+});
+
+// staff schema
+// const addStaffSchema = Joi.object({
+//   staffId: Joi.number().required().messages({
+//     "any.required": "Staff ID is required",
+//     "number.base": "Staff ID must be a number"
+//   }),
+//   staffName: Joi.string().min(2).max(50).required().messages({
+//     "string.min": "Staff name must be at least 2 characters long",
+//     "string.max": "Staff name cannot exceed 50 characters",
+//     "any.required": "Staff name is required"
+//   }),
+//   specificCourse: Joi.array()
+//     .items(Joi.string().min(2).max(100).required())
+//     .min(1)
+//     .required()
+//     .messages({
+//       "array.min": "At least one course is required",
+//       "any.required": "Specific courses are required",
+//       "string.min": "Course name must be at least 2 characters long",
+//       "string.max": "Course name cannot exceed 100 characters"
+//     })
+// });
+
+const displayStaffSchema = Joi.object({
+  staffId: Joi.number().messages({
+    "number.base": "Staff ID must be a number"
+  }),
+  staffName: Joi.string().min(2).max(50).messages({
+    "string.min": "Staff name must be at least 2 characters long",
+    "string.max": "Staff name cannot exceed 50 characters"
+  })
+});
+
+const updateStaffSchema = Joi.object({
+  staffId: Joi.number().required().messages({
+    "any.required": "Staff ID is required",
+    "number.base": "Staff ID must be a number"
+  }),
+  staffName: Joi.string().min(2).max(50).required().messages({
+    "string.min": "Staff name must be at least 2 characters long",
+    "string.max": "Staff name cannot exceed 50 characters",
+    "any.required": "Staff name is required"
+  }),
+  specificCourse: Joi.array()
+    .items(Joi.string().min(2).max(100).required())
+    .min(1)
+    .required()
+    .messages({
+      "array.min": "At least one course is required",
+      "any.required": "Specific courses are required",
+      "string.min": "Course name must be at least 2 characters long",
+      "string.max": "Course name cannot exceed 100 characters"
+    })
+});
+
+
+// app.post("/addstaff", async (req, res) => {
+//   try {
+//     const { error } = addStaffSchema.validate(req.body, { abortEarly: false });
+
+//     if (error) {
+//       return res.status(400).json({ error: error.details.map((err) => err.message) });
+//     }
+
+//     client = await connect();
+//     const staffCol = client.db("Rencoders").collection("staffdetails");
+//     const { staffId, staffName, specificCourse } = req.body;
+
+//     const existingStaff = await staffCol.findOne({ staffId });
+
+//     if (existingStaff) {
+//       return res.status(400).json({ error: "Staff member already exists" });
+//     }
+
+//     const result = await staffCol.insertOne({
+//       staffId,
+//       staffName,
+//       specificCourse
+//     });
+
+//     if (result.insertedId) {
+//       return res.status(201).json({ 
+//         message: "Staff added successfully", 
+//         staff: { 
+//           staffId, 
+//           staffName, 
+//           specificCourse
+//         } 
+//       });
+//     } else {
+//       return res.status(500).json({ error: "Failed to add staff" });
+//     }
+//   } catch (error) {
+//     console.log("Error while adding staff:", error);
+//     res.status(500).json({ error: "Internal Server Error" });
+//   }
+//   finally{
+   
+//       await client.close();
+    
+//   }
+// });
+
+app.post("/addstaff", async (req, res) => {
+  try {
+    const client = await connect();
+    const staffCol = client.db("Rencoders").collection("staffdetails");
+    const { staffId, staffName, specificCourse } = req.body;
+
+    
+    if (!staffId || !staffName || !specificCourse) {
+      return res.status(400).json({ error: "All fields (staffId, staffName, specificCourse) are required" });
+    }
+
+    if (!Array.isArray(specificCourse)) {
+      return res.status(400).json({ error: "specificCourse must be an array" });
+    }
+
+    const existingStaff = await staffCol.findOne({ staffId });
+
+    if (existingStaff) {
+      return res.status(400).json({ error: "Staff member already exists" });
+    }
+
+    const result = await staffCol.insertOne({
+      staffId,
+      staffName,
+      specificCourse
+    });
+
+    if (result.insertedId) {
+      return res.status(201).json({ 
+        message: "Staff added successfully", 
+        staff: { 
+          staffId, 
+          staffName, 
+          specificCourse
+        } 
+      });
+    } else {
+      return res.status(500).json({ error: "Failed to add staff" });
+    }
+  } catch (error) {
+    console.log("Error while adding staff:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+
+
+app.post("/displaystaff", async (req, res) => {
+  try {
+    const { error } = displayStaffSchema.validate(req.body);
+
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
+
+     client = await connect();
+    const staffCol = client.db("Rencoders").collection("staffdetails");
+
+    let query = {};
+    if (req.body.staffId) {
+      query.staffId = req.body.staffId;
+    }
+    if (req.body.staffName) {
+      query.staffName = req.body.staffName;
+    }
+
+    const staff = await staffCol.find(query).toArray();
+
+    if (staff.length === 0) {
+      return res.status(404).json({ message: "No staff members found" });
+    }
+
+    res.status(200).json(staff);
+  } catch (error) {
+    console.log("Error displaying staff:", error);
+    res.status(500).json({ error: "Server Error" });
+  }
+  finally{
+    
+      await client.close();
+    
+  }
+});
+
+// Update Staff Endpoint
+app.post("/updatestaff", async (req, res) => {
+  try {
+    const { error } = updateStaffSchema.validate(req.body, { abortEarly: false });
+
+    if (error) {
+      return res.status(400).json({ error: error.details.map((err) => err.message) });
+    }
+
+    client = await connect(); 
+    const staffCol = client.db("Rencoders").collection("staffdetails"); 
+    const { staffId, staffName, specificCourse } = req.body;
+
+    const existingStaff = await staffCol.findOne({ staffId });
+    if (!existingStaff) {
+      return res.status(404).json({ error: "Staff not found" });
+    }
+
+    const updatedStaff = {
+      staffId,
+      staffName,
+      specificCourse
+    };
+
+    const result = await staffCol.updateOne({ staffId }, { $set: updatedStaff });
+
+    if (result.modifiedCount > 0) {
+      return res.status(200).json({ message: "Staff updated successfully", staff: updatedStaff });
+    } else {
+      return res.status(500).json({ error: "Failed to update staff" });
+    }
+  } catch (error) {
+    console.log("Error while updating staff:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+  finally{
+      await client.close();
+    
+  }
+});
+
+
+// Course Schema
+const courseSchema = Joi.object({
+  courseID: Joi.string().required().messages({
+    "string.empty": "Course ID is required",
+    "any.required": "Course ID is required"
+  }),
+  courseName: Joi.string().required().messages({
+    "string.empty": "Course name is required",
+    "any.required": "Course name is required"
+  }),
+  coursePrice: Joi.number().positive().required().messages({
+    "number.base": "Course price must be a number",
+    "number.positive": "Course price must be positive",
+    "any.required": "Course price is required"
+  }),
+  learningMode: Joi.string().valid('online', 'offline').required().messages({
+    "any.only": "Learning mode must be either 'online' or 'offline'",
+    "any.required": "Learning mode is required"
+  }),
+  duration: Joi.number().positive().required().messages({
+    "number.base": "Duration must be a number",
+    "number.positive": "Duration must be positive",
+    "any.required": "Duration is required"
+  }),
+  trainers: Joi.array().items(
+    Joi.object({
+      staffId: Joi.string().required().messages({
+        "string.empty": "Trainer staff ID is required",
+        "any.required": "Trainer staff ID is required"
+      }),
+      staffName: Joi.string().required().messages({
+        "string.empty": "Trainer name is required",
+        "any.required": "Trainer name is required"
+      })
+    })
+  ).min(1).required().messages({
+    "array.base": "Trainers must be an array",
+    "array.min": "At least one trainer is required",
+    "any.required": "Trainers are required"
+  })
+});
+
+
+
+
+
+
+
+// Add Course Endpoint with Joi Validation
+app.post("/addcourse", async (req, res) => {
+  try {
+    const { error } = courseSchema.validate(req.body, { abortEarly: false });
+    if (error) {
+      return res.status(400).json({ 
+        error: error.details.map(err => err.message) 
+      });
+    }
+
+    client = await connect();
+    const courseCol = client.db("Rencoders").collection("courses");
+    const { courseID } = req.body;
+
+    const existingCourse = await courseCol.findOne({ courseID });
+    if (existingCourse) {
+      return res.status(400).json({ error: "Course already exists" });
+    }
+
+    const result = await courseCol.insertOne(req.body);
+
+    if (result.insertedId) {
+      return res.status(201).json({
+        message: "Course added successfully",
+        course: req.body
+      });
+    }
+    return res.status(500).json({ error: "Failed to add course" });
+  } catch (error) {
+    console.log("Error while adding course:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+  finally{
+    
+      await client.close();
+   
+  }
+});
+
+app.post("/displaycourses", async (req, res) => {
+  try {
+     client = await connect();
+    const courseCol = client.db("Rencoders").collection("courses");
+    const courses = await courseCol.find({}).toArray();
+    res.status(200).json(courses);
+  } catch (error) {
+    console.log("Error Displaying Courses:", error);
+    res.status(500).json({ error: "Server Error" });
+  }
+  finally{
+    
+      await client.close();
+    
+  }
+});
+
+// Payment List Schema
+const paymentListSchema = Joi.object({
+  StudentId: Joi.string().required().messages({
+    "string.empty": "Student ID is required",
+    "any.required": "Student ID is required"
+  }),
+  courses: Joi.array().items(
+    Joi.object({
+      courseID: Joi.string().required().messages({
+        "string.empty": "Course ID is required",
+        "any.required": "Course ID is required"
+      }),
+      courseName: Joi.string().required().messages({
+        "string.empty": "Course name is required",
+        "any.required": "Course name is required"
+      }),
+      coursePrice: Joi.number().positive().required().messages({
+        "number.base": "Course price must be a number",
+        "number.positive": "Course price must be positive",
+        "any.required": "Course price is required"
+      }),
+      duration: Joi.number().positive().required().messages({
+        "number.base": "Duration must be a number",
+        "number.positive": "Duration must be positive",
+        "any.required": "Duration is required"
+      })
+    })
+  ).min(1).required().messages({
+    "array.base": "Courses must be an array",
+    "array.min": "At least one course is required",
+ 
+  }),
+  amountPaid: Joi.number().positive().required().messages({
+    "number.base": "Amount paid must be a number",
+    "number.positive": "Amount paid must be positive",
+  
+  }),
+  paymentDate: Joi.date().required().messages({
+    "date.base": "Payment date must be a valid date",
+
+  })
+});
+
+// Add Payment List Endpoint with Joi Validation
+app.post("/addpaymentlist", async (req, res) => {
+  try {
+    const { error } = paymentListSchema.validate(req.body, { abortEarly: false });
+    if (error) {
+      return res.status(400).json({ 
+        error: error.details.map(err => err.message) 
+      });
+    }
+
+   client = await connect();
+    const paymentListCol = client.db("Rencoders").collection("paymentlist");
+
+    const result = await paymentListCol.insertOne({
+      studentId: req.body.StudentId,
+      courses: req.body.courses,
+      amountPaid: parseFloat(req.body.amountPaid),
+      paymentDate: new Date(req.body.paymentDate)
+    });
+
+    if (result.insertedId) {
+      return res.status(201).json({
+        message: "Payment added successfully",
+        paymentDetails: req.body
+      });
+    }
+    return res.status(500).json({ error: "Failed to add payment" });
+  } catch (error) {
+    console.log("Error while adding payment:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+  finally{
+    
+      await client.close();
+    
+  }
+});
+
+app.get("/displaypaymentlist", async (req, res) => {
+  try {
+     client = await connect();
+    const paymentListCol = client.db("Rencoders").collection("paymentlist");
+    const paymentList = await paymentListCol.find({}).toArray();
+    res.status(200).json(paymentList);
+  } catch (error) {
+    console.log("Error Displaying Payment List:", error);
+    res.status(500).json({ error: "Server Error" });
+  }
+  finally{
+    
+      await client.close();
+    
+  }
+});
+
+
+
+app.post("/courseschedule", async (req, res) => {
+  try {
+     client = await connect();
+    const scheduleCol = client.db("Rencoders").collection("staffSchedules");
+    const staffschedule = await scheduleCol.find({}).toArray();
+    res.status(200).json(staffschedule);
+  } catch (error) {
+    console.log("Error fetching:", error);
+    res.status(500).json({ error: "Server Error" });
+  }
+  finally{
+  
+      await client.close();
+    
+  }
+});
+
+// Schedule Schema
+const scheduleSchema = Joi.object({
+  staffId: Joi.string().required().messages({
+    "string.empty": "Staff ID is required",
+    
+  }),
+  staffName: Joi.string().required().messages({
+    "string.empty": "Staff name is required",
+
+  }),
+  schedule: Joi.array().items(
+    Joi.object({
+      day: Joi.string().required().messages({
+        "string.empty": "Day is required",
+      
+      }),
+      courseID: Joi.string().required().messages({
+        "string.empty": "Course ID is required",
+       
+      }),
+      courseName: Joi.string().required().messages({
+        "string.empty": "Course name is required",
+      
+      }),
+      courseTime: Joi.string().required().messages({
+        "string.empty": "Course time is required",
+       
+      }),
+      trainers: Joi.array().items(
+        Joi.object({
+          staffId: Joi.string().required().messages({
+            "string.empty": "Trainer staff ID is required",
+     
+          }),
+          staffName: Joi.string().required().messages({
+            "string.empty": "Trainer name is required",
+            
+          })
+        })
+      ).optional()
+    })
+  ).min(1).required().messages({
+    "array.base": "Schedule must be an array",
+    "array.min": "At least one schedule entry is required",
+    "any.required": "Schedule is required"
+  })
+});
+app.post('/uploadSchedule', async (req, res) => {
+  try {
+    const { error,value } = scheduleSchema.validate(req.body, { abortEarly: false });
+    if (error) {
+      return res.status(400).json({ 
+        error: error.details.map(err => err.message) 
+      });
+    }
+
+     client = await connect();
+    const schedulesCol = client.db("Rencoders").collection("staffSchedules");
+
+    const result = await schedulesCol.insertOne(req.body);
+
+    res.status(201).json({
+      message: "Schedule uploaded successfully",
+      scheduleId: result.insertedId,
+    });
+  } catch (error) {
+    console.error("Error uploading schedule:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+  finally{
+    
+      await client.close();
+    
+  }
+});
+
+const courseCompleteSchema = Joi.object({
+  studentId: Joi.string().optional().messages({
+    "string.empty": "Student ID is required"
+  }),
+  completionThreshold: Joi.number().positive().default(90).messages({
+   
+    "number.positive": "Completion threshold must be positive"
+  })
+});
+
+app.post("/coursecomplete", async (req, res) => {
+  try {
+    const { error } = courseCompleteSchema.validate(req.body, { abortEarly: false });
+    if (error) {
+      return res.status(400).json({ 
+        error: error.details.map(err => err.message) 
+      });
+    }
+
+    client = await connect();
+    const studentCol = client.db("Rencoders").collection("studentdetails");
+    const courseCompleteCol = client.db("Rencoders").collection("coursecomplete");
+
+    const { studentId, completionThreshold = 90 } = req.body;
+
+    if (studentId) {
+      
+    } else {
+      const allStudents = await studentCol.find({}).toArray();
+      
+      const completionData = await Promise.all(allStudents.map(async (student) => {
+        const totalDuration = student.courses.reduce((acc, course) => acc + (course.duration || 0), 0);
+        const isComplete = totalDuration >= completionThreshold;
+        
+        return {
+          studentId: student.studentId,
+          studentName: student.studentName,
+          totalDuration,
+          isCourseComplete: isComplete,
+          completionDate: isComplete ? new Date() : null
+        };
+      }));
+
+      res.status(200).json({ students: completionData });
+    }
+  } catch (error) {
+    console.log("Error while checking course completion:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+  finally{
+    
+      await client.close();
+    
+  }
+});
+
+app.post("/attendance", async (req, res) => {
+  try {
+     client = await connect();
+    const attendanceCol = client.db("Rencoders").collection("attendance");
+    const allAttendanceRecords = await attendanceCol.find({}).toArray();
+    res.status(200).json(allAttendanceRecords);
+  } catch (error) {
+    console.log("Error fetching:", error);
+    res.status(500).json({ error: "Server Error" });
+  }
+  finally{
+  
+      await client.close();
+    
+  }
+});
+
+//count
+app.post('/countstudent', async (req, res) => {
+  const client = await connect();
+  const studentCollection = client.db("Rencoders").collection("studentdetails");
+
+  try {
+    const countstd = await studentCollection.countDocuments(); // Get the actual count of students
+    res.json({ success: true, count: countstd });
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+  finally{
+  
+      await client.close();
+    
+  }
+ 
+});
+
+app.post('/countstaff', async (req, res) => {
+   const client = await connect();
+  const studentCollection = client.db("Rencoders").collection("staffdetails");
+
+  try {
+    const countstd = await studentCollection.countDocuments(); 
+    res.json({ success: true, count: countstd }); 
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+  finally{
+  
+      await client.close();
+    
+  }
+});
+
+
+const PORT = 4000;
+app.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
+console.log("Connected to MongoDB");
+});

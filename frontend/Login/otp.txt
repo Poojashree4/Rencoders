@@ -1,0 +1,74 @@
+app.post('/sendotp', async (req, res)=>{
+  const {email} =req.body;
+  if(!email){
+    return res.status(400).json({error: "Email is required"});
+  }
+try{
+  client=await connect();
+  const userCol = client.db("Rencoders").collection("users");
+  const user = await userCol.findOne({email});
+
+  
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  const secret = speakeasy.generateSecret({length:20}).base32;
+  await userCol.updateOne({ email }, { $set: { otpSecret: secret } });
+
+    const otp = speakeasy.totp({ secret, encoding: 'base32' });
+    console.log(`OTP for ${email}: ${otp}`);
+    res.json({ message: "OTP sent successfully" });
+
+}
+catch (err) {
+  console.error(err);
+  res.status(500).json({ error: "Error sending OTP" });
+} finally {
+  client?.close();
+}
+
+});
+
+app.post('/verify-otp', async (req, res) => {
+  const { email, otp } = req.body;
+
+  if (!email || !otp) {
+    return res.status(400).json({ error: "Email and OTP are required" });
+  }
+
+  try {
+    client = await connect();
+    const userCol = client.db("Rencoders").collection("users");
+    const user = await userCol.findOne({ email });
+
+    if (!user || !user.otpSecret) {
+      return res.status(400).json({ error: "OTP secret not found" });
+    }
+
+    const isVerified = speakeasy.totp.verify({
+      secret: user.otpSecret,
+      encoding: 'base32',
+      token: otp,
+      window: 1
+    });
+
+    if (!isVerified) {
+      return res.status(401).json({ error: "Invalid or expired OTP" });
+    }
+
+    // Remove OTP secret after successful verification
+    await userCol.updateOne({ email }, { $unset: { otpSecret: "" } });
+
+    const token = createToken(user._id);
+    res.status(200).json({ message: "OTP verified", token });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "OTP verification failed" });
+  } finally {
+    client?.close();
+  }
+});
+
+
+
+
+

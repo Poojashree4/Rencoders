@@ -1,0 +1,375 @@
+import React, { useState, useEffect,useRef } from 'react';
+import { 
+  Pressable, 
+  Text, 
+  StyleSheet, 
+  View, 
+  SafeAreaView, 
+  TextInput, 
+  ScrollView, 
+  TouchableOpacity
+} from 'react-native';
+import { Picker } from '@react-native-picker/picker';
+import Navbar from '../Navbar/Navbar';
+import { useNavigation } from '@react-navigation/native';
+import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
+import { useSelector } from 'react-redux';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import jwtDecode from 'jwt-decode';
+
+
+export default function Student() {
+  const [studentName, setStudentName] = useState('');
+  const [learningMode, setLearningMode] = useState('');
+  const [selectedCourse, setSelectedCourse] = useState('');
+  const [selectedCourseId, setSelectedCourseId] = useState('');
+  const [courseDuration, setCourseDuration] = useState('');
+  const [courses, setCourses] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [editingStudentId, setEditingStudentId] = useState(null);
+  const navigation = useNavigation();
+  const scrollViewRef = useRef(); // Add ref for ScrollView
+  const [userToken, setUserToken] = useState('');
+  const ip = useSelector((state) => state.ip.value);
+
+ // Replace your current navigation with this
+// const handleStudentCardPress = async (student) => {
+//   try {
+//     const token = await AsyncStorage.getItem('token');
+//     if (!token) {
+//       navigation.navigate('Login');
+//       return;
+//     }
+
+//     const response = await fetch(`${ip}/studentdetails`, {
+//       method: 'POST',
+//       headers: {
+//         'Content-Type': 'application/json',
+//         'Authorization': `Bearer ${token}`
+//       },
+//       body: JSON.stringify({ studentId: student.studentId })
+//     });
+
+//     if (response.status === 401) {
+//       await AsyncStorage.removeItem('token');
+//       navigation.navigate('Login');
+//       return;
+//     }
+
+//     const data = await response.json();
+    
+//     if (!response.ok) {
+//       throw new Error(data.error || 'Failed to fetch student details');
+//     }
+
+//     navigation.navigate('StudentList', { student: data });
+//   } catch (error) {
+//     console.error('Error fetching student details:', error);
+//     alert(error.message || 'Failed to load student details');
+//   }
+// };
+
+
+  // Modified fetchStudents with better token handling
+  const fetchStudents = async () => {
+    try {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) {
+        navigation.navigate('Login');
+        return;
+      }
+
+      const response = await fetch(`${ip}/displaystudent`, { 
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({})
+      });
+
+      if (response.status === 401) {
+        // Token is invalid or expired
+        await AsyncStorage.removeItem('token');
+        //navigation.navigate('Login');
+        return;
+      }
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch students');
+      }
+
+      setStudents(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching students:', error);
+      alert('Failed to load student data');
+      setStudents([]);
+    }
+  };
+
+  // Modified addOrUpdateStudent with token refresh handling
+  const addOrUpdateStudent = async () => {
+    if (!studentName || !learningMode || courses.length === 0) {
+      alert('Please fill in all fields and add at least one course');
+      return;
+    }
+
+    try {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) {
+        navigation.navigate('Login');
+        return;
+      }
+
+      const payload = {
+        studentId: editingStudentId || undefined,
+        studentname: studentName,
+        learningMode,
+        courses: courses.map(course => ({
+          courseName: course.courseName,
+          courseID: course.courseID,
+          duration: Number(course.duration)
+        }))
+      };
+
+      const url = editingStudentId ? `${ip}/updatestudent` : `${ip}/addstudent`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.status === 401) {
+        await AsyncStorage.removeItem('token');
+        navigation.navigate('Login');
+        return;
+      }
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Request failed');
+
+      alert(editingStudentId ? 'Student updated' : 'Student added');
+      fetchStudents();
+      resetForm();
+    } catch (error) {
+      console.error('Error:', error);
+      alert(error.message || 'Failed to submit student');
+    }
+  };
+  const addCourse = () => {
+    if (selectedCourse && selectedCourseId && courseDuration) {
+      setCourses([...courses, { 
+        courseName: selectedCourse, 
+        courseID: selectedCourseId, 
+        duration: parseInt(courseDuration) || 0 
+      }]);
+      setSelectedCourse('');
+      setSelectedCourseId('');
+      setCourseDuration('');
+    } else {
+      alert('Please fill all course fields');
+    }
+  };
+  useEffect(() => {
+    const checkToken = async () => {
+      const token = await AsyncStorage.getItem('token');
+      if (!token) {
+        navigation.navigate('Login');
+      } else {
+        fetchStudents();
+      }
+    };
+    checkToken();
+  }, [ip, navigation]);
+
+
+  const resetForm = () => {
+    setStudentName('');
+    setLearningMode('');
+    setSelectedCourse('');
+    setSelectedCourseId('');
+    setCourseDuration('');
+    setCourses([]);
+    setEditingStudentId(null);
+  };
+
+  const startEditing = (student) => {
+    setStudentName(student.studentname);
+    setLearningMode(student.learningMode);
+    setCourses(student.courses);
+    setEditingStudentId(student.studentId);
+  };
+  scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+
+  return (
+    <>
+      <ScrollView style={styles.scrollView} ref={scrollViewRef} >
+        <SafeAreaView style={styles.container}>
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Student Management</Text>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>
+              {editingStudentId ? '✏️ Edit Student' : 'Add New Student'}
+            </Text>
+            
+            <Text style={styles.inputLabel}>Student Name</Text>
+            <TextInput 
+              style={styles.input} 
+              placeholder="Enter student name" 
+              value={studentName} 
+              onChangeText={setStudentName} 
+            />
+                  <Text style={styles.inputLabel}>Learning Mode</Text>    
+            <View style={styles.pickerContainer}>
+
+              <Picker
+                selectedValue={learningMode}
+                onValueChange={setLearningMode}
+                style={styles.picker}
+                dropdownIconColor="#666"
+              >
+                <Picker.Item label="Select Learning Mode" value="" />
+                <Picker.Item label="Online" value="online" />
+                <Picker.Item label="Offline" value="offline" />
+              </Picker>
+            </View>
+
+
+            <Text style={styles.inputLabel}>Course Name</Text>
+            <View style={styles.pickerContainer}>
+              
+              <Picker
+                selectedValue={selectedCourse}
+                onValueChange={setSelectedCourse}
+                style={styles.picker}
+                dropdownIconColor="#666"
+              >
+                <Picker.Item label="Select Course" value="" />
+                <Picker.Item label="Mern Stack" value="Mern Stack" />
+                <Picker.Item label="Java Full Stack" value="Java Full Stack" />
+                <Picker.Item label="Python Full Stack" value="Python Full Stack" />
+                <Picker.Item label="Data Structures" value="Data Structures" />
+                <Picker.Item label="React Advanced" value="React Advanced" />
+              </Picker>
+            </View>
+
+            <Text style={styles.inputLabel}>Course ID</Text>
+            <View style={styles.pickerContainer}>
+            
+              <Picker
+                selectedValue={selectedCourseId}
+                onValueChange={setSelectedCourseId}
+                style={styles.picker}
+                dropdownIconColor="#666"
+              >
+                <Picker.Item label="Select Course ID" value="" />
+                <Picker.Item label="MER120" value="MER120" />
+                <Picker.Item label="JV200" value="JV200" />
+                <Picker.Item label="PY300" value="PY300" />
+                <Picker.Item label="DSA500" value="DSA500" />
+                <Picker.Item label="RE400" value="RE400" />
+              </Picker>
+            </View>
+            
+            <Text style={styles.inputLabel}>Course Duration (hours)</Text>
+            <TextInput 
+              style={styles.input} 
+              placeholder="Enter duration in hours" 
+              keyboardType="numeric" 
+              value={courseDuration} 
+              onChangeText={setCourseDuration} 
+            />
+            
+            <Pressable style={[styles.button, styles.addButton]} onPress={addCourse}>
+              <Text style={styles.buttonText}>📚 Add Course</Text>
+            </Pressable>
+
+            {courses.length > 0 && (
+              <View style={styles.courseList}>
+                <Text style={styles.subtitle}>📋 Added Courses:</Text>
+                {courses.map((course, index) => (
+                  <View key={index} style={styles.courseItemContainer}>
+                    <Text style={styles.courseItem}>
+                       {course.courseName} 
+                      {"\n"} ID: {course.courseID} 
+                      {"\n"}⏱ {course.duration} hrs
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <Pressable style={[styles.button, styles.submitButton]} onPress={addOrUpdateStudent}>
+              <Text style={styles.buttonText}>
+                {editingStudentId ? ' Update Student' : ' Add Student'}
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* <View style={styles.studentListSection}>
+            <Text style={styles.sectionTitle}> Student List</Text>
+            {students.length === 0 ? (
+              <Text style={styles.emptyMessage}>No students added yet</Text>
+            ) : (
+              students.map((student) => (
+                <TouchableOpacity
+                  key={student.studentId}
+                  style={styles.studentCard}
+                  onPress={() => navigation.navigate('studentlist', { student })}
+                >
+                  <View style={styles.studentInfo}>
+                    <View>
+                      <Text style={styles.studentName}>👤 {student.studentname}</Text>
+                      <Text style={styles.studentDetail}>Student ID: {student.studentId}</Text>
+                      <Text style={styles.studentDetail}>Learning Mode: {student.learningMode}</Text>
+                    </View>
+                    <Pressable onPress={() => startEditing(student)} style={styles.editbutn}>
+                      <FontAwesome6 name="edit" size={20} color="#4A90E2" />
+                    </Pressable>
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
+          </View> */}
+          <View style={styles.studentListSection}>
+  <Text style={styles.sectionTitle}> Student List</Text>
+
+  {!Array.isArray(students) || students.length === 0 ? (
+    <Text style={styles.emptyMessage}>No students added yet</Text>
+  ) : (
+    students.map((student) => (
+      <TouchableOpacity
+        key={student.studentId}
+        style={styles.studentCard}
+        onPress={() => navigation.navigate('studentlist', { student })}
+        // onPress={() => handleStudentCardPress(student)}
+      >
+        <View style={styles.studentInfo}>
+          <View>
+            <Text style={styles.studentName}>👤 {student.studentname}</Text>
+            <Text style={styles.studentDetail}>Student ID: {student.studentId}</Text>
+            <Text style={styles.studentDetail}>Learning Mode: {student.learningMode}</Text>
+          </View>
+          <Pressable onPress={() => startEditing(student)} style={styles.editbutn}>
+            <FontAwesome6 name="edit" size={20} color="#4A90E2" />
+          </Pressable>
+        </View>
+      </TouchableOpacity>
+    ))
+  )}
+</View>
+
+        </SafeAreaView>
+      </ScrollView>
+      <View style={styles.navbarContainer}>
+        <Navbar />
+      </View>
+    </>
+  );
+}
